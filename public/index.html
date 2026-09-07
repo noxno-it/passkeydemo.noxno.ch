@@ -1,0 +1,1458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Passkey Browser Ceremony Demo</title>
+<style>
+/* ---------------------------------------------------------------- tokens */
+:root {
+  --bg:        #f4f6f8;
+  --surface:   #ffffff;
+  --surface-2: #f0f2f5;
+  --text:      #14171c;
+  --muted:     #59616e;
+  --border:    #dde2e8;
+  --accent:    #14538d;
+  --accent-fg: #ffffff;
+  --ok:        #14713f;
+  --ok-bg:     #e6f4ec;
+  --bad:       #a81f13;
+  --bad-bg:    #fbeae8;
+  --warn-bg:   #fff3df;
+  --warn-bd:   #d19216;
+  --warn-fg:   #5c3d00;
+  --alarm-bg:  #7d1409;
+  --alarm-fg:  #fff2f0;
+  --alarm-bd:  #4d0c05;
+  --code-bg:   #f5f6f8;
+  --shadow:    0 1px 2px rgba(16,20,28,.06), 0 4px 14px rgba(16,20,28,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:        #0e1015;
+    --surface:   #171a21;
+    --surface-2: #1e222b;
+    --text:      #e7eaf0;
+    --muted:     #9aa3b2;
+    --border:    #2a303b;
+    --accent:    #4b9bea;
+    --accent-fg: #06121e;
+    --ok:        #52c98d;
+    --ok-bg:     #10281c;
+    --bad:       #f3736a;
+    --bad-bg:    #2e1512;
+    --warn-bg:   #31260f;
+    --warn-bd:   #b78d21;
+    --warn-fg:   #f4dda6;
+    --alarm-bg:  #6d1109;
+    --alarm-fg:  #ffeae7;
+    --alarm-bd:  #a8291d;
+    --code-bg:   #12151b;
+    --shadow:    0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  }
+}
+
+/* ---------------------------------------------------------------- base */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-wrap: break-word;
+}
+h1 { font-size: 1.45rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.01em; }
+h2 { font-size: 1.0rem; margin: 0 0 .6rem; letter-spacing: .01em; text-transform: uppercase; color: var(--muted); }
+h3 { font-size: .95rem; margin: 1rem 0 .4rem; }
+p  { margin: 0 0 .7rem; }
+a  { color: var(--accent); }
+code, kbd, pre, .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+code { background: var(--code-bg); padding: .08em .32em; border-radius: 4px; font-size: .87em; }
+
+/* --------------------------------------------------- the standing banner */
+/* Sticky and non-dismissible on purpose: the whole compliance point of this
+   page is that what it demonstrates is NOT what a native app produces. */
+.banner {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--alarm-bg);
+  color: var(--alarm-fg);
+  border-bottom: 3px solid var(--alarm-bd);
+  padding: .6rem 1rem;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  font-size: .875rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+}
+/* Child combinator, not ".banner b": the emphasised words inside the sentence
+   below are also <b>, and making those display:block breaks the line at each. */
+.banner > b { display: block; font-size: .95rem; letter-spacing: .01em; }
+.banner span { display: block; opacity: .93; }
+/* It stays sticky on a phone, so it must not eat a third of the screen.
+   The full argument lives in the always-visible .explain card below. */
+@media (max-width: 560px) {
+  .banner { font-size: .78rem; padding-top: .45rem; padding-bottom: .45rem; line-height: 1.4; }
+  .banner > b { font-size: .84rem; }
+}
+
+/* ---------------------------------------------------------------- layout */
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.25rem max(1rem, env(safe-area-inset-left)) 4rem max(1rem, env(safe-area-inset-right));
+}
+.lede { color: var(--muted); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin: 1rem 0;
+  box-shadow: var(--shadow);
+}
+.card.explain { border-left: 4px solid var(--warn-bd); background: var(--warn-bg); color: var(--warn-fg); }
+.card.explain h2 { color: inherit; opacity: .8; }
+.card.explain code { background: rgba(127,127,127,.18); }
+
+/* ---------------------------------------------------------------- forms */
+label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin-bottom: .25rem; }
+input[type=text] {
+  width: 100%;
+  font: inherit;
+  font-size: 1rem;
+  padding: .55rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+input[type=text]:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.field { margin-bottom: .8rem; }
+.row { display: flex; flex-wrap: wrap; gap: .6rem; }
+.row > * { flex: 1 1 13rem; }
+.checks { display: grid; gap: .45rem; margin: .2rem 0 .9rem; }
+.checks label { display: flex; gap: .5rem; align-items: flex-start; font-weight: 400; font-size: .85rem; color: var(--text); }
+.checks input { margin: .25rem 0 0; flex: none; }
+.checks .hint { display: block; color: var(--muted); font-size: .95em; }
+
+button {
+  font: inherit; font-weight: 600;
+  padding: .6rem 1rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 44px;           /* comfortable tap target on a phone */
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.actions button { flex: 1 1 12rem; }
+.actions.minor button { flex: 0 1 auto; font-weight: 500; font-size: .85rem; min-height: 38px; padding: .35rem .8rem; }
+
+/* ---------------------------------------------------------------- status */
+#status { margin-top: .9rem; font-size: .9rem; padding: .55rem .75rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); }
+#status.ok   { background: var(--ok-bg);   border-color: var(--ok);      color: var(--ok); }
+#status.bad  { background: var(--bad-bg);  border-color: var(--bad);     color: var(--bad); }
+#status.busy { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-fg); }
+
+/* ---------------------------------------------------------------- tables */
+.kv { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.kv th, .kv td { text-align: left; padding: .32rem .5rem .32rem 0; vertical-align: top; border-bottom: 1px solid var(--border); }
+/* No white-space:nowrap here: a long label such as "Platform authenticator
+   (Touch ID / Hello / screen lock)" would otherwise force the whole page wider
+   than a 320px phone and give the body a horizontal scrollbar. */
+.kv th { font-weight: 600; color: var(--muted); width: 34%; padding-right: 1rem; }
+.kv td { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+.kv tr:last-child th, .kv tr:last-child td { border-bottom: 0; }
+.kv tr.section th { text-transform: uppercase; font-size: .78rem; letter-spacing: .04em; padding-top: .7rem; width: auto; }
+
+/* On a phone a two-column key/value table squeezes both sides into slivers.
+   Stack them instead: label on its own line, value underneath. */
+@media (max-width: 560px) {
+  .kv, .kv tbody, .kv tr, .kv th, .kv td { display: block; width: auto; }
+  .kv tr { border-bottom: 1px solid var(--border); padding: .4rem 0; }
+  .kv th, .kv td { border-bottom: 0; padding: 0; }
+  .kv th { font-size: .78rem; }
+  .kv td { margin-top: .12rem; }
+  .kv tr:last-child { border-bottom: 0; }
+}
+.tag { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .03em; padding: .12rem .42rem; border-radius: 5px; text-transform: uppercase; }
+.tag.ok  { background: var(--ok-bg);  color: var(--ok);  border: 1px solid var(--ok); }
+.tag.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); }
+.tag.na  { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ------------------------------------------------------------------- log */
+#log {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  max-height: 30rem;
+  overflow: auto;
+  padding: .35rem;
+  font-size: .78rem;
+}
+#log:empty::after { content: "Nothing yet — run a ceremony above."; color: var(--muted); display: block; padding: .6rem; }
+.entry { border-bottom: 1px solid var(--border); padding: .35rem .25rem; }
+.entry:last-child { border-bottom: 0; }
+.entry .head { display: flex; gap: .5rem; align-items: baseline; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.entry .t { color: var(--muted); flex: none; font-size: .95em; }
+.entry .arrow { flex: none; font-weight: 700; }
+.entry .title { font-weight: 600; overflow-wrap: anywhere; }
+.entry.req  .arrow { color: var(--accent); }
+.entry.res  .arrow { color: var(--ok); }
+.entry.err  .arrow { color: var(--bad); }
+.entry.err  .title { color: var(--bad); }
+.entry.note .arrow, .entry.note .title { color: var(--muted); font-weight: 500; }
+.entry pre {
+  margin: .3rem 0 .1rem;
+  padding: .45rem .55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: .95em;
+  line-height: 1.4;
+}
+.entry pre[hidden] { display: none; }
+.entry .toggle {
+  background: none; border: 0; color: var(--accent); font-size: .95em; padding: 0;
+  min-height: 0; cursor: pointer; font-weight: 600; text-decoration: underline; flex: none;
+}
+
+/* ------------------------------------------------------------- fatal box */
+#fatal { display: none; }
+#fatal.show { display: block; }
+#fatal.card { border-left: 4px solid var(--bad); background: var(--bad-bg); color: var(--bad); }
+#fatal h2 { color: inherit; opacity: .85; }
+#fatal code { background: rgba(127,127,127,.2); }
+
+details { border-top: 1px solid var(--border); padding-top: .6rem; margin-top: .6rem; }
+summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
+details > *:not(summary) { margin-top: .6rem; }
+
+footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 2rem; }
+.muted { color: var(--muted); }
+ul { padding-left: 1.15rem; margin: 0 0 .7rem; }
+li { margin-bottom: .3rem; }
+</style>
+</head>
+<body>
+
+<!-- =====================================================================
+     The standing, non-dismissible compliance banner.
+     ===================================================================== -->
+<div class="banner" role="alert">
+  <b>Browser demo — attestation &ldquo;none&rdquo;.</b>
+  <span>A browser passkey is <b>not</b> the attested, device-bound credential a native app produces.
+        This page demonstrates the <b>ceremony</b>, not the <b>attestation</b>.</span>
+</div>
+
+<main>
+  <h1>Passkey — browser ceremony demo</h1>
+  <p class="lede">
+    Registration and login against the reference server&rsquo;s demo API at <code>/demo/api</code>, run
+    entirely from this page. Every request and response is printed below so the ceremony can be watched
+    step by step.
+  </p>
+
+  <!-- ================================================== the honest part -->
+  <section class="card explain">
+    <h2>What this page can and cannot show</h2>
+    <p><b>It can show:</b> the full WebAuthn ceremony — the server issuing a challenge, the platform
+      authenticator creating a credential under biometric/PIN user verification, the signed response
+      travelling back, and the server verifying the signature against the challenge, the relying-party id
+      and the origin.</p>
+    <p><b>It cannot show attestation.</b> Consumer platform authenticators reached through a browser
+      (iCloud Keychain, Google Password Manager, Windows Hello) return attestation statement format
+      <code>none</code>, no matter that the server asks for <code>attestation: "direct"</code>. There is no
+      certificate chain, no hardware statement, and nothing that proves which app or which key store
+      produced the key. Such a credential is stored here with <code>attested=false</code>.</p>
+    <p><b>Only a native app can produce the attested credential.</b> In the app the key is generated in the
+      iOS Secure Enclave or in Android StrongBox/TEE, is biometric-gated by the OS, and is hardware-attested:
+      Android emits attestation format <code>android-key</code> with a certificate chain up to the Google
+      hardware attestation root; iOS emits <code>packed</code> self-attestation plus an Apple App Attest
+      object bound to the same credential. App identity is proven by that attestation — not by Associated
+      Domains, <code>apple-app-site-association</code> or <code>assetlinks.json</code>. This host <i>does</i>
+      serve both of those files, at <code>/.well-known/apple-app-site-association</code> and
+      <code>/.well-known/assetlinks.json</code>, but they belong to the other path: they let iCloud Keychain
+      and Google Password Manager hold a <b>platform</b> passkey for this domain — one that syncs across
+      the user&rsquo;s devices and returns attestation <code>none</code>, i.e. BSI trust level <i>normal</i>.
+      The attested, device-bound design needs no domain association at all. It is the attestation, and only
+      the attestation, that carries a credential from <i>normal</i> to <i>substantiell</i>, and it is not
+      reachable from a browser.</p>
+    <p style="margin-bottom:0"><b>Consequence for this demo:</b> the credential you are about to create would
+      be <b>rejected</b> by the strict verifier. The endpoints under
+      <code>&lt;basePath&gt;/rest/authentication/passkey/*</code> (<code>basePath</code> defaults to
+      <code>/api</code>) run with
+      <code>attestationPolicy=strict</code> and require an accepted attestation format, the app&rsquo;s own
+      AAGUID, and a device-bound (non-synced) credential. The <code>/demo/api/*</code> endpoints exist only under
+      <code>attestationPolicy=demo</code>, purely so the ceremony can complete in a browser. After each
+      ceremony this page shows exactly which production rules the browser credential fails.</p>
+  </section>
+
+  <!-- ====================================================== fatal errors -->
+  <section class="card" id="fatal">
+    <h2>This browser cannot run the demo</h2>
+    <div id="fatalBody"></div>
+  </section>
+
+  <!-- ======================================================= environment -->
+  <section class="card">
+    <h2>Environment</h2>
+    <table class="kv"><tbody id="envTable"></tbody></table>
+    <h3>Server — <span class="mono" id="statusPath">GET /demo/api/status</span></h3>
+    <table class="kv"><tbody id="serverTable"></tbody></table>
+  </section>
+
+  <!-- ========================================================== controls -->
+  <section class="card">
+    <h2>Run a ceremony</h2>
+    <div class="row">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" value="demo@example.com" autocomplete="username"
+               autocapitalize="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="deviceName">Device name</label>
+        <input type="text" id="deviceName" value="Browser demo" autocapitalize="off" autocorrect="off"
+               spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="apiBase">Demo API base path</label>
+        <input type="text" id="apiBase" value="/demo/api" autocapitalize="off" autocorrect="off"
+               spellcheck="false">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnRegister" class="primary" type="button">1 &middot; Register a passkey</button>
+      <button id="btnLogin" type="button">2 &middot; Log in with the passkey</button>
+    </div>
+    <div class="actions minor" style="margin-top:.6rem">
+      <button id="btnList" type="button">Show enrolled credentials</button>
+      <button id="btnReset" type="button">Reset this user</button>
+      <button id="btnStatus" type="button">Reload server status</button>
+    </div>
+
+    <div id="status" role="status" aria-live="polite">Ready.</div>
+
+    <div id="credList" hidden style="margin-top:.9rem">
+      <h3 style="margin-top:0">Credentials enrolled for this user</h3>
+      <table class="kv"><tbody id="credListTable"></tbody></table>
+    </div>
+
+    <details>
+      <summary>Notes and local-testing overrides</summary>
+      <ul style="font-size:.85rem; color:var(--muted)">
+        <li><b>Leave the username empty before &ldquo;Log in&rdquo;</b> to exercise a discoverable-credential
+          login: the server then sends an empty <code>allowCredentials</code> and the browser offers whatever
+          passkey it holds for this relying party. Registration always needs a username.</li>
+        <li><b>Registering twice with the same authenticator</b> fails with <code>InvalidStateError</code>,
+          because the server lists the existing credential in <code>excludeCredentials</code>. Press
+          <b>Reset this user</b> first.</li>
+      </ul>
+      <div class="checks">
+        <label>
+          <input type="checkbox" id="optAnyAuthenticator">
+          <span>Strip <code>authenticatorSelection.authenticatorAttachment</code>
+            <span class="hint">The demo server already omits it, so this is normally a no-op. It stays here
+              as a safety valve if the server is reconfigured to demand <code>"platform"</code> on a machine
+              with no Touch ID, Windows Hello or screen lock. Attestation is <code>none</code> either way —
+              this changes nothing about the compliance point above.</span></span>
+        </label>
+        <label>
+          <input type="checkbox" id="optRpIdHost">
+          <span>Override <code>rp.id</code> with this page&rsquo;s hostname
+            <span class="hint">For poking at the ceremony from <code>localhost</code> while the server&rsquo;s
+              configured <code>rpId</code> is the public demo host. The browser prompt will appear, but
+              the server <b>will reject the result</b>: the <code>rpIdHash</code> inside
+              <code>authenticatorData</code> will not match the <code>rpId</code> the server verifies against,
+              and the origin in <code>clientDataJSON</code> will not be in <code>acceptedOrigins</code>.
+              Useful for debugging, useless for a demo.</span></span>
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <!-- ========================================================== analysis -->
+  <section class="card" id="analysisCard" hidden>
+    <h2>What the credential actually contains</h2>
+    <table class="kv"><tbody id="analysisTable"></tbody></table>
+
+    <h3>Judged by the strict production verifier</h3>
+    <p class="muted" style="font-size:.82rem">
+      These are the checks in <code>WebAuthnVerifier.java</code> that every credential registered through
+      <code>&lt;basePath&gt;/rest/authentication/passkey/register/verify</code> must pass under
+      <code>attestationPolicy=strict</code>.
+    </p>
+    <table class="kv"><tbody id="verdictTable"></tbody></table>
+    <p id="verdictSummary" style="margin:.8rem 0 0"></p>
+
+    <div id="serverVerdict" hidden>
+      <h3>The server&rsquo;s own reading of the same bytes</h3>
+      <p class="muted" style="font-size:.82rem">
+        Decoded independently on the server by webauthn4j, not taken from this page. If the two readings
+        disagree, this page&rsquo;s decoder is wrong — trust the server.
+      </p>
+      <table class="kv"><tbody id="serverVerdictTable"></tbody></table>
+    </div>
+  </section>
+
+  <!-- =============================================================== log -->
+  <section class="card">
+    <h2>Ceremony log</h2>
+    <div class="actions minor" style="margin-bottom:.6rem">
+      <button id="btnExpand" type="button">Expand all</button>
+      <button id="btnCollapse" type="button">Collapse all</button>
+      <button id="btnCopy" type="button">Copy log</button>
+      <button id="btnClear" type="button">Clear</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <footer>
+Passkey demo relying party &middot; Noxno GmbH &middot; browser demo page &middot; no external scripts,
+    no CDN, no analytics, no cookies.
+  </footer>
+</main>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   1. base64url <-> bytes
+   ---------------------------------------------------------------------
+   This is where most WebAuthn demos quietly break, so it is spelled out.
+
+   The WebAuthn JS API speaks ArrayBuffer. JSON on the wire speaks
+   base64url (RFC 4648 section 5): alphabet '-' and '_' instead of '+'
+   and '/', and NO '=' padding. The browser's atob()/btoa() only speak
+   standard base64 WITH padding, so both directions need a translation.
+
+   Fields that must be decoded base64url -> ArrayBuffer before handing
+   the options to the browser:
+       publicKey.challenge
+       publicKey.user.id
+       publicKey.excludeCredentials[].id   (registration)
+       publicKey.allowCredentials[].id     (login)
+
+   Fields that must be encoded ArrayBuffer -> base64url before POSTing:
+       credential.rawId
+       response.clientDataJSON
+       response.attestationObject          (registration)
+       response.authenticatorData          (login)
+       response.signature                  (login)
+       response.userHandle                 (login, MAY be null)
+   ===================================================================== */
+
+/** base64url string -> Uint8Array. */
+function b64uToBytes(value) {
+  // Put the standard alphabet back...
+  var b64 = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  // ...and restore the '=' padding atob() insists on. base64url omits it.
+  var remainder = b64.length % 4;
+  if (remainder === 2) { b64 += "=="; }
+  else if (remainder === 3) { b64 += "="; }
+  else if (remainder === 1) { throw new Error("not a valid base64url string (length % 4 === 1)"); }
+  var binary = atob(b64);
+  var out = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) { out[i] = binary.charCodeAt(i); }
+  return out;
+}
+
+/** base64url string -> ArrayBuffer, which is what the WebAuthn API wants. */
+function b64uToBuffer(value) {
+  return b64uToBytes(value).buffer;
+}
+
+/** ArrayBuffer | ArrayBufferView -> base64url string, unpadded. */
+function bufferToB64u(input) {
+  var bytes = input instanceof Uint8Array ? input
+            : ArrayBuffer.isView(input)   ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+            : new Uint8Array(input);
+  // String.fromCharCode.apply blows the argument limit on large inputs, and an
+  // android-key attestationObject with a full x5c chain is several kilobytes.
+  // Chunk it.
+  var binary = "";
+  var CHUNK = 0x8000;
+  for (var i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  // btoa() emits standard base64 with padding; strip back to base64url.
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function bytesToHex(bytes) {
+  var out = "";
+  for (var i = 0; i < bytes.length; i++) { out += bytes[i].toString(16).padStart(2, "0"); }
+  return out;
+}
+
+/** 16 raw bytes -> canonical UUID text, the form an AAGUID is quoted in. */
+function bytesToUuid(bytes) {
+  var h = bytesToHex(bytes);
+  return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+}
+
+/* =====================================================================
+   2. A deliberately small CBOR reader
+   ---------------------------------------------------------------------
+   Only enough to look inside the attestationObject, which is a CBOR map
+   { "fmt": tstr, "attStmt": map, "authData": bstr }. No external library.
+   ===================================================================== */
+function cborDecode(bytes) {
+  var pos = 0;
+  var decoder = new TextDecoder();
+
+  function byte() {
+    if (pos >= bytes.length) { throw new Error("CBOR: unexpected end of input"); }
+    return bytes[pos++];
+  }
+  function argument(info) {
+    if (info < 24) { return info; }
+    if (info === 24) { return byte(); }
+    if (info === 25) { var a = byte(), b = byte(); return (a << 8) | b; }
+    if (info === 26) { var v = 0; for (var i = 0; i < 4; i++) { v = (v * 256) + byte(); } return v; }
+    if (info === 27) { var w = 0; for (var j = 0; j < 8; j++) { w = (w * 256) + byte(); } return w; }
+    throw new Error("CBOR: indefinite lengths are not supported here");
+  }
+  function item() {
+    var initial = byte();
+    var major = initial >> 5;
+    var info = initial & 0x1f;
+    var length, i, out, key;
+    switch (major) {
+      case 0: return argument(info);                       // unsigned integer
+      case 1: return -1 - argument(info);                  // negative integer
+      case 2:                                              // byte string
+        length = argument(info);
+        out = bytes.subarray(pos, pos + length); pos += length; return out;
+      case 3:                                              // text string
+        length = argument(info);
+        out = decoder.decode(bytes.subarray(pos, pos + length)); pos += length; return out;
+      case 4:                                              // array
+        length = argument(info); out = [];
+        for (i = 0; i < length; i++) { out.push(item()); }
+        return out;
+      case 5:                                              // map
+        length = argument(info); out = {};
+        for (i = 0; i < length; i++) { key = item(); out[String(key)] = item(); }
+        return out;
+      case 6:                                              // tag - skip it, keep the content
+        argument(info); return item();
+      case 7:
+        if (info === 20) { return false; }
+        if (info === 21) { return true; }
+        if (info === 22) { return null; }
+        if (info === 23) { return undefined; }
+        throw new Error("CBOR: floats / simple value " + info + " are not supported here");
+      default:
+        throw new Error("CBOR: major type " + major + " is not supported here");
+    }
+  }
+  return item();
+}
+
+/* =====================================================================
+   3. authenticatorData layout (WebAuthn Level 3, section 6.1)
+        32  rpIdHash
+         1  flags
+         4  signCount (big endian)
+       -- present only when the AT flag is set --
+        16  aaguid
+         2  credentialIdLength (big endian)
+         L  credentialId
+         .. COSE public key (CBOR)
+   ===================================================================== */
+function parseAuthenticatorData(bytes) {
+  if (bytes.length < 37) { throw new Error("authenticatorData is shorter than 37 bytes"); }
+  // NB: bytes is usually a subarray of the attestationObject, so byteOffset is
+  // NOT zero. The DataView must be given that offset or it reads the wrong bytes.
+  var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  var flags = bytes[32];
+  var parsed = {
+    rpIdHash: bytesToHex(bytes.subarray(0, 32)),
+    flagsRaw: "0x" + flags.toString(16).padStart(2, "0"),
+    UP: (flags & 0x01) !== 0,   // user present
+    UV: (flags & 0x04) !== 0,   // user verified (biometric / PIN)
+    BE: (flags & 0x08) !== 0,   // backup eligible  -> credential MAY be synced
+    BS: (flags & 0x10) !== 0,   // backup state     -> credential IS synced
+    AT: (flags & 0x40) !== 0,   // attested credential data present
+    ED: (flags & 0x80) !== 0,   // extension data present
+    signCount: view.getUint32(33, false)
+  };
+  if (parsed.AT && bytes.length >= 55) {
+    parsed.aaguid = bytesToUuid(bytes.subarray(37, 53));
+    parsed.credentialIdLength = view.getUint16(53, false);
+  }
+  return parsed;
+}
+
+/* =====================================================================
+   4. Serialising a PublicKeyCredential for the wire
+   ---------------------------------------------------------------------
+   The shape below is what webauthn4j's parseRegistrationResponseJSON /
+   parseAuthenticationResponseJSON on the server expect.
+   ===================================================================== */
+function serialiseAttestation(credential) {
+  var response = credential.response;
+  var payload = {
+    // credential.id is ALREADY base64url text per the spec; rawId is the same
+    // bytes as an ArrayBuffer. We encode rawId ourselves rather than copying id,
+    // so a broken conversion here would be visible in the log as a mismatch.
+    id: credential.id,
+    rawId: bufferToB64u(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToB64u(response.clientDataJSON),
+      attestationObject: bufferToB64u(response.attestationObject)
+    },
+    clientExtensionResults: credential.getClientExtensionResults()
+  };
+  if (typeof response.getTransports === "function") {
+    var transports = response.getTransports();
+    if (transports && transports.length) { payload.response.transports = transports; }
+  }
+  if (credential.authenticatorAttachment) {
+    payload.authenticatorAttachment = credential.authenticatorAttachment;
+  }
+  return payload;
+}
+
+function serialiseAssertion(credential) {
+  var response = credential.response;
+  var payload = {
+    id: credential.id,
+    rawId: bufferToB64u(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToB64u(response.clientDataJSON),
+      authenticatorData: bufferToB64u(response.authenticatorData),
+      signature: bufferToB64u(response.signature)
+    },
+    clientExtensionResults: credential.getClientExtensionResults()
+  };
+  // userHandle is null for a non-discoverable credential; only send it when present.
+  if (response.userHandle) {
+    payload.response.userHandle = bufferToB64u(response.userHandle);
+  }
+  if (credential.authenticatorAttachment) {
+    payload.authenticatorAttachment = credential.authenticatorAttachment;
+  }
+  return payload;
+}
+
+/* =====================================================================
+   5. Turning the server's options JSON into real WebAuthn options
+   ===================================================================== */
+function decodeCreationOptions(options) {
+  var out = Object.assign({}, options);
+  out.challenge = b64uToBuffer(options.challenge);
+  out.user = Object.assign({}, options.user, { id: b64uToBuffer(options.user.id) });
+  out.excludeCredentials = (options.excludeCredentials || []).map(function (descriptor) {
+    return Object.assign({}, descriptor, { id: b64uToBuffer(descriptor.id) });
+  });
+  return out;
+}
+
+function decodeRequestOptions(options) {
+  var out = Object.assign({}, options);
+  out.challenge = b64uToBuffer(options.challenge);
+  out.allowCredentials = (options.allowCredentials || []).map(function (descriptor) {
+    return Object.assign({}, descriptor, { id: b64uToBuffer(descriptor.id) });
+  });
+  return out;
+}
+
+/* =====================================================================
+   6. Log pane
+   ===================================================================== */
+var logEl = document.getElementById("log");
+var statusEl = document.getElementById("status");
+
+function stamp() {
+  var d = new Date();
+  return d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0");
+}
+
+function log(kind, title, body) {
+  var arrows = { req: "→", res: "←", err: "✕", note: "•" };
+  var entry = document.createElement("div");
+  entry.className = "entry " + kind;
+
+  var head = document.createElement("div");
+  head.className = "head";
+
+  var t = document.createElement("span"); t.className = "t"; t.textContent = stamp();
+  var arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = arrows[kind] || "•";
+  var label = document.createElement("span"); label.className = "title"; label.textContent = title;
+  head.appendChild(t); head.appendChild(arrow); head.appendChild(label);
+  entry.appendChild(head);
+
+  if (body !== undefined && body !== null) {
+    var pre = document.createElement("pre");
+    pre.textContent = typeof body === "string" ? body : JSON.stringify(body, null, 2);
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "toggle";
+    toggle.textContent = "hide";
+    toggle.addEventListener("click", function () {
+      pre.hidden = !pre.hidden;
+      toggle.textContent = pre.hidden ? "show" : "hide";
+    });
+    head.appendChild(toggle);
+    entry.appendChild(pre);
+  }
+
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
+  return entry;
+}
+
+function setStatus(kind, text) {
+  statusEl.className = kind;
+  statusEl.textContent = text;
+}
+
+document.getElementById("btnClear").addEventListener("click", function () {
+  logEl.textContent = "";
+  document.getElementById("analysisCard").hidden = true;
+  document.getElementById("credList").hidden = true;
+  setStatus("", "Ready.");
+});
+document.getElementById("btnExpand").addEventListener("click", function () {
+  logEl.querySelectorAll(".entry pre").forEach(function (pre) { pre.hidden = false; });
+  logEl.querySelectorAll(".entry .toggle").forEach(function (b) { b.textContent = "hide"; });
+});
+document.getElementById("btnCollapse").addEventListener("click", function () {
+  logEl.querySelectorAll(".entry pre").forEach(function (pre) { pre.hidden = true; });
+  logEl.querySelectorAll(".entry .toggle").forEach(function (b) { b.textContent = "show"; });
+});
+document.getElementById("btnCopy").addEventListener("click", function () {
+  var lines = [];
+  logEl.querySelectorAll(".entry").forEach(function (entry) {
+    lines.push(entry.querySelector(".head").textContent.replace(/(hide|show)$/, "").trim());
+    var pre = entry.querySelector("pre");
+    if (pre) { lines.push(pre.textContent); }
+  });
+  var text = lines.join("\n");
+  var done = function (ok) {
+    setStatus(ok ? "ok" : "bad",
+      ok ? "Log copied to the clipboard." : "Could not copy — select the log text manually.");
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+  } else {
+    done(false);
+  }
+});
+
+/* =====================================================================
+   7. HTTP
+   ===================================================================== */
+function apiBase() {
+  var raw = document.getElementById("apiBase").value.trim() || "/demo/api";
+  return raw.replace(/\/+$/, "");
+}
+function username() { return document.getElementById("username").value.trim(); }
+function deviceName() { return document.getElementById("deviceName").value.trim() || "Browser demo"; }
+
+function request(method, path, body) {
+  var url = apiBase() + path;
+  var init = { method: method, headers: { "Accept": "application/json" } };
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  log("req", method + " " + url, body);
+  return fetch(url, init).then(function (response) {
+    return response.text().then(function (text) {
+      var parsed = null;
+      try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = null; }
+      if (!response.ok) {
+        log("err", "HTTP " + response.status + " " + response.statusText + " from " + url,
+            parsed || text || "(empty body)");
+        if (response.status === 404) {
+          throw new Error("HTTP 404 — the demo API is not registered. It only exists when the server runs " +
+                          "with attestationPolicy=demo. Set attestationPolicy=demo in application.properties " +
+                          "and restart the server.");
+        }
+        // The reference server's error contract is { message, errors: [CODE] }.
+        var detail = parsed && parsed.message ? parsed.message : ("HTTP " + response.status);
+        var code = parsed && parsed.errors && parsed.errors.length ? " [" + parsed.errors.join(", ") + "]" : "";
+        throw new Error(detail + code);
+      }
+      log("res", "HTTP " + response.status + " from " + url, parsed !== null ? parsed : text);
+      return parsed;
+    });
+  });
+}
+
+function postJson(path, body) { return request("POST", path, body); }
+
+/**
+ * The demo options/verify responses repeat the attestation policy and a plain-language note.
+ * They are echoed into the log every single time on purpose: the server, not just this page,
+ * states that a browser credential is unattested.
+ */
+function echoPolicy(response) {
+  if (!response || typeof response !== "object") { return; }
+  if (response.attestationPolicy) {
+    log("note", "Server attestationPolicy = \"" + response.attestationPolicy + "\"" +
+        (response.attestationPolicy === "demo"
+          ? " — fmt=none is accepted here. The compliance path (strict) rejects it."
+          : ""));
+  }
+  if (response.note) { log("note", "Server note: " + response.note); }
+  if (response.attestationNote) { log("note", "Server attestation note: " + response.attestationNote); }
+}
+
+/* =====================================================================
+   8. Environment checks and graceful degradation
+   ===================================================================== */
+var CAN_RUN = true;
+
+function envRow(label, value, tone) {
+  var tr = document.createElement("tr");
+  var th = document.createElement("th"); th.textContent = label;
+  var td = document.createElement("td");
+  if (tone) {
+    var tag = document.createElement("span");
+    tag.className = "tag " + tone;
+    tag.textContent = tone === "ok" ? "ok" : (tone === "bad" ? "no" : "—");
+    td.appendChild(tag);
+    td.appendChild(document.createTextNode(" "));
+  }
+  td.appendChild(document.createTextNode(value));
+  tr.appendChild(th); tr.appendChild(td);
+  document.getElementById("envTable").appendChild(tr);
+}
+
+function fatal(html) {
+  CAN_RUN = false;
+  var box = document.getElementById("fatal");
+  box.className = "card show";
+  var p = document.createElement("p");
+  p.innerHTML = html;   // fixed literals only, never user or server data
+  document.getElementById("fatalBody").appendChild(p);
+  document.getElementById("btnRegister").disabled = true;
+  document.getElementById("btnLogin").disabled = true;
+  setStatus("bad", "Disabled — see the box above.");
+}
+
+(function checkEnvironment() {
+  envRow("Page origin", location.origin);
+  envRow("Hostname", location.hostname || "(none)");
+
+  var secure = window.isSecureContext === true;
+  envRow("Secure context", secure ? "https or localhost" : "NOT secure", secure ? "ok" : "bad");
+
+  var hasApi = typeof window.PublicKeyCredential === "function";
+  envRow("window.PublicKeyCredential", hasApi ? "present" : "missing", hasApi ? "ok" : "bad");
+
+  if (!hasApi) {
+    fatal("This browser does not expose <code>window.PublicKeyCredential</code>, so it has no WebAuthn " +
+          "support at all. Use a current Safari, Chrome, Edge or Firefox.");
+  }
+  if (!secure) {
+    fatal("WebAuthn is only available in a <b>secure context</b>. This page is not being served over one. " +
+          "Serve it over <b>https</b> (that is what the public demo host is for), or " +
+          "open it on <code>http://localhost</code> / <code>http://127.0.0.1</code>, and reload.");
+  }
+
+  if (hasApi && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function (available) {
+      envRow("Platform authenticator (Touch ID / Hello / screen lock)",
+             available ? "available" : "not available on this device",
+             available ? "ok" : "bad");
+      if (!available && CAN_RUN) {
+        log("note", "No user-verifying platform authenticator on this device. The demo server does not " +
+                    "demand one, so a roaming security key or a phone over hybrid/QR can answer instead.");
+      }
+    }).catch(function () { /* nothing to report */ });
+  }
+})();
+
+/* =====================================================================
+   8b. GET /demo/api/status — the server's own statement of what it is
+   ---------------------------------------------------------------------
+   Optional: the ceremonies do not depend on it. If the endpoint is not
+   there the row says so rather than breaking the page.
+   ===================================================================== */
+var serverStatus = null;
+
+function serverRow(label, value, tone) {
+  var tbody = document.getElementById("serverTable");
+  var tr = document.createElement("tr");
+  var th = document.createElement("th"); th.textContent = label;
+  var td = document.createElement("td");
+  if (tone) {
+    var tag = document.createElement("span");
+    tag.className = "tag " + tone;
+    tag.textContent = tone === "ok" ? "ok" : (tone === "bad" ? "no" : "—");
+    td.appendChild(tag); td.appendChild(document.createTextNode(" "));
+  }
+  td.appendChild(document.createTextNode(value));
+  tr.appendChild(th); tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
+function loadStatus() {
+  document.getElementById("serverTable").textContent = "";
+  document.getElementById("statusPath").textContent = "GET " + apiBase() + "/status";
+  return request("GET", "/status").then(function (status) {
+    serverStatus = status || {};
+    echoPolicy(serverStatus);
+
+    serverRow("attestationPolicy", String(serverStatus.attestationPolicy || "(not reported)"),
+              serverStatus.attestationPolicy === "demo" ? "na" : null);
+    if (serverStatus.rpId) {
+      serverRow("rpId", serverStatus.rpId, rpIdUsable(serverStatus.rpId) ? "ok" : "bad");
+    }
+    if (serverStatus.rpName) { serverRow("rpName", String(serverStatus.rpName)); }
+    if (serverStatus.acceptedOrigins) {
+      var origins = serverStatus.acceptedOrigins;
+      var originOk = origins.indexOf(location.origin) >= 0;
+      serverRow("acceptedOrigins", origins.join(", ") || "(none)", originOk ? "ok" : "bad");
+      if (!originOk) {
+        log("err", "This page's origin \"" + location.origin + "\" is not in the server's acceptedOrigins.",
+            "The origin the authenticator writes into clientDataJSON will not be accepted, so the server " +
+            "will reject the ceremony even though the browser completes it.\n\nAccepted: " +
+            origins.join(", "));
+      }
+    }
+    if (serverStatus.attestedFormats) {
+      serverRow("Counts as attested", serverStatus.attestedFormats.join("   |   "));
+    }
+    if (typeof serverStatus.noneAccepted === "boolean") {
+      serverRow("fmt=none accepted", serverStatus.noneAccepted ? "yes (demo only)" : "no",
+                serverStatus.noneAccepted ? "bad" : "ok");
+    }
+    if (serverStatus.truth) { serverRow("Server statement", String(serverStatus.truth)); }
+
+    if (serverStatus.rpId && !rpIdUsable(serverStatus.rpId)) {
+      log("err", "Pre-flight: rp.id \"" + serverStatus.rpId + "\" cannot be used from hostname \"" +
+                 location.hostname + "\". The browser will refuse before any prompt appears.");
+    }
+    return serverStatus;
+  }).catch(function (error) {
+    serverRow("Status endpoint", "not reachable — " +
+              (error && error.message ? error.message : String(error)), "bad");
+    return null;
+  });
+}
+
+/* =====================================================================
+   9. rp.id sanity check
+   ---------------------------------------------------------------------
+   The browser refuses create()/get() unless rp.id equals the page's
+   hostname or is a registrable suffix of it. Catching that here gives a
+   readable message instead of a bare SecurityError.
+   ===================================================================== */
+function rpIdUsable(rpId) {
+  var host = location.hostname;
+  return rpId === host || host.endsWith("." + rpId);
+}
+
+function warnRpId(rpId) {
+  if (rpIdUsable(rpId)) {
+    log("note", "rp.id \"" + rpId + "\" matches this page's hostname \"" + location.hostname +
+                "\" — the browser will accept it.");
+    return;
+  }
+  log("err", "rp.id mismatch: the server issued rp.id \"" + rpId + "\" but this page is served from \"" +
+             location.hostname + "\".",
+      "The browser will reject this with a SecurityError, because rp.id must equal the page's hostname or " +
+      "be a registrable suffix of it.\n\nFix one of:\n" +
+      "  - serve this page from https://" + rpId + "/demo/ (that is the point of the public demo " +
+      "host), or\n" +
+      "  - set rpId (and acceptedOrigins) in application.properties to match this host and restart, or\n" +
+      "  - tick the rp.id override under \"Notes and local-testing overrides\" (the browser prompt will " +
+      "appear, but the server will then reject the response).");
+}
+
+/* =====================================================================
+   10. Applying the local-testing overrides
+   ===================================================================== */
+function applyOverrides(publicKey, isRegistration) {
+  if (document.getElementById("optAnyAuthenticator").checked && isRegistration
+      && publicKey.authenticatorSelection
+      && publicKey.authenticatorSelection.authenticatorAttachment) {
+    delete publicKey.authenticatorSelection.authenticatorAttachment;
+    log("note", "Override: removed authenticatorSelection.authenticatorAttachment so any authenticator may answer.");
+  }
+  if (document.getElementById("optRpIdHost").checked) {
+    var host = location.hostname;
+    if (isRegistration) {
+      log("note", "Override: rp.id \"" + publicKey.rp.id + "\" replaced with \"" + host +
+                  "\". The server will reject the result.");
+      publicKey.rp.id = host;
+    } else {
+      log("note", "Override: rpId \"" + publicKey.rpId + "\" replaced with \"" + host +
+                  "\". The server will reject the result.");
+      publicKey.rpId = host;
+    }
+  }
+  return publicKey;
+}
+
+/* =====================================================================
+   11. Analysis of the produced credential
+   ===================================================================== */
+/* The relying party's own app AAGUIDs, mirroring WebAuthnVerifier.java. EXAMPLE values:
+   a real deployment substitutes the AAGUIDs its own authenticator implementation reports. */
+var APP_AAGUID_ANDROID = "2b9c7d6e-5f4a-4c3b-8a2d-1e0f9c8b7a6d";
+var APP_AAGUID_IOS     = "7a0e4c5e-1d3b-4b8f-9a6c-3f2e1d0c9b8a";
+
+function row(tbody, label, value, tone, note) {
+  var tr = document.createElement("tr");
+  var th = document.createElement("th"); th.textContent = label;
+  var td = document.createElement("td");
+  if (tone) {
+    var tag = document.createElement("span");
+    tag.className = "tag " + tone;
+    tag.textContent = tone === "ok" ? "pass" : (tone === "bad" ? "fail" : "—");
+    td.appendChild(tag);
+    td.appendChild(document.createTextNode(" "));
+  }
+  td.appendChild(document.createTextNode(value));
+  if (note) {
+    var small = document.createElement("div");
+    small.className = "muted";
+    small.style.fontFamily = "inherit";
+    small.style.fontSize = ".92em";
+    small.style.marginTop = ".15rem";
+    small.textContent = note;
+    td.appendChild(small);
+  }
+  tr.appendChild(th); tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
+function analyseAttestation(credential, requestedAttestation) {
+  var facts = document.getElementById("analysisTable");
+  var verdicts = document.getElementById("verdictTable");
+  facts.textContent = "";
+  verdicts.textContent = "";
+  document.getElementById("serverVerdict").hidden = true;
+
+  var attestationBytes = new Uint8Array(credential.response.attestationObject);
+  var attestationObject, format, authData;
+  try {
+    attestationObject = cborDecode(attestationBytes);
+    format = attestationObject.fmt;
+    authData = parseAuthenticatorData(attestationObject.authData);
+  } catch (e) {
+    log("err", "Could not decode the attestationObject in the browser: " + e.message);
+    document.getElementById("analysisCard").hidden = false;
+    row(facts, "Decode error", e.message);
+    return null;
+  }
+
+  var clientData = JSON.parse(new TextDecoder().decode(credential.response.clientDataJSON));
+  log("note", "Decoded clientDataJSON (the bytes the authenticator actually signed over)", clientData);
+  log("note", "Decoded attestationObject: fmt = \"" + format + "\"", {
+    fmt: format,
+    attStmtKeys: Object.keys(attestationObject.attStmt || {}),
+    authData: authData
+  });
+
+  var algorithm = null;
+  if (typeof credential.response.getPublicKeyAlgorithm === "function") {
+    try { algorithm = credential.response.getPublicKeyAlgorithm(); } catch (e) { algorithm = null; }
+  }
+
+  row(facts, "Attestation requested", String(requestedAttestation));
+  row(facts, "Attestation received", String(format),
+      format === "none" ? "bad" : "na",
+      format === "none" ? "As expected in a browser: no attestation statement at all." : null);
+  row(facts, "AAGUID", authData.aaguid || "(absent)");
+  row(facts, "Flags", authData.flagsRaw +
+      "   UP=" + (authData.UP ? 1 : 0) +
+      " UV=" + (authData.UV ? 1 : 0) +
+      " BE=" + (authData.BE ? 1 : 0) +
+      " BS=" + (authData.BS ? 1 : 0) +
+      " AT=" + (authData.AT ? 1 : 0) +
+      " ED=" + (authData.ED ? 1 : 0));
+  row(facts, "signCount", String(authData.signCount));
+  row(facts, "Public key algorithm", algorithm === null ? "(not reported by this browser)" : String(algorithm),
+      null, algorithm === -7 ? "-7 is ES256." : null);
+  row(facts, "Transports", (typeof credential.response.getTransports === "function"
+      ? (credential.response.getTransports() || []).join(", ") : "") || "(none reported)");
+  row(facts, "Origin in clientData", String(clientData.origin));
+  row(facts, "Credential id", credential.id);
+
+  // ---- the production rules, straight out of WebAuthnVerifier.java ----
+  var formatOk = format === "android-key" || format === "packed";
+  row(verdicts, "Attestation format is android-key or packed",
+      "got \"" + format + "\"", formatOk ? "ok" : "bad",
+      formatOk ? null : "Rejected under attestationPolicy=strict: format \"" + format + "\" is not accepted.");
+
+  var aaguidOk = authData.aaguid === APP_AAGUID_ANDROID || authData.aaguid === APP_AAGUID_IOS;
+  row(verdicts, "AAGUID is one of the app's own AAGUIDs",
+      "got " + (authData.aaguid || "(absent)"), aaguidOk ? "ok" : "bad",
+      aaguidOk ? null : "The native app authenticator reports " + APP_AAGUID_ANDROID + " (Android) or " +
+                        APP_AAGUID_IOS + " (iOS). A browser reports its own.");
+
+  var boundOk = !authData.BE && !authData.BS;
+  row(verdicts, "Device-bound: BE and BS both clear",
+      "BE=" + (authData.BE ? 1 : 0) + " BS=" + (authData.BS ? 1 : 0), boundOk ? "ok" : "bad",
+      boundOk ? "This particular credential is not backup-eligible — but that alone is not attestation."
+              : "Rejected: the passkey is not device-bound. A synced passkey can leave this device.");
+
+  var countOk = authData.signCount === 0;
+  row(verdicts, "signCount is 0 at registration", String(authData.signCount), countOk ? "ok" : "bad");
+
+  var algOk = algorithm === null ? null : algorithm === -7;
+  row(verdicts, "Key is ES256 (alg -7)",
+      algorithm === null ? "(not reported)" : String(algorithm),
+      algOk === null ? "na" : (algOk ? "ok" : "bad"));
+
+  row(verdicts, "User verified (UV flag)", authData.UV ? "yes" : "no", authData.UV ? "ok" : "bad");
+
+  var summary = document.getElementById("verdictSummary");
+  summary.textContent = "";
+  summary.style.color = "";
+  var strong = document.createElement("b");
+  if (formatOk && aaguidOk && boundOk) {
+    strong.textContent = "Unusual: this credential passes the structural checks. It still is not the " +
+                         "native app's credential — the certificate chain and the App Attest object " +
+                         "decide, and the strict path verifies both.";
+  } else {
+    strong.textContent = "Verdict: the strict production verifier would REJECT this credential.";
+    summary.style.color = "var(--bad)";
+  }
+  summary.appendChild(strong);
+  var tail = document.createElement("div");
+  tail.className = "muted";
+  tail.style.marginTop = ".35rem";
+  tail.textContent = "That is the correct outcome. Attestation is obtainable only from a native app, " +
+                     "where the key is generated in the Secure Enclave or in StrongBox/TEE and the platform " +
+                     "signs a statement about it. This browser ceremony proves possession of a key and user " +
+                     "verification — nothing about where the key lives.";
+  summary.appendChild(tail);
+
+  document.getElementById("analysisCard").hidden = false;
+  return authData;
+}
+
+/**
+ * Renders the server's DemoVerifyResponse and cross-checks it against what this page decoded
+ * from the same bytes. Every field is optional: a missing one is simply not shown.
+ */
+function renderServerVerdict(response, clientAuthData) {
+  var box = document.getElementById("serverVerdict");
+  var tbody = document.getElementById("serverVerdictTable");
+  tbody.textContent = "";
+  if (!response || typeof response !== "object") { box.hidden = true; return; }
+
+  var any = false;
+  function put(label, value, tone, note) {
+    if (value === undefined || value === null) { return; }
+    any = true;
+    row(tbody, label, String(value), tone, note);
+  }
+
+  put("attestationFmt", response.attestationFmt, response.attestationFmt === "none" ? "bad" : "na");
+  put("attested", response.attested, response.attested === true ? "ok" : "bad",
+      response.attested === false
+        ? "Stored as an UNATTESTED credential. Not usable for the substantiell trust level." : null);
+  put("deviceBound", response.deviceBound, response.deviceBound === true ? "ok" : "bad");
+  put("backupEligible (BE)", response.backupEligible, response.backupEligible === false ? "ok" : "bad");
+  put("backupState (BS)", response.backupState, response.backupState === false ? "ok" : "bad");
+  put("aaguid", response.aaguid);
+  put("signCount", response.signCount);
+  put("credentialId", response.credentialId);
+  put("deviceName", response.deviceName);
+  put("createdAt", response.createdAt);
+  if (response.attestationNote) { row(tbody, "attestationNote", String(response.attestationNote)); any = true; }
+
+  // Cross-check: two independent decoders over the same authenticatorData.
+  if (clientAuthData) {
+    var mismatches = [];
+    if (response.aaguid && clientAuthData.aaguid && response.aaguid !== clientAuthData.aaguid) {
+      mismatches.push("aaguid: server=" + response.aaguid + " page=" + clientAuthData.aaguid);
+    }
+    if (typeof response.backupEligible === "boolean" && response.backupEligible !== clientAuthData.BE) {
+      mismatches.push("BE: server=" + response.backupEligible + " page=" + clientAuthData.BE);
+    }
+    if (typeof response.backupState === "boolean" && response.backupState !== clientAuthData.BS) {
+      mismatches.push("BS: server=" + response.backupState + " page=" + clientAuthData.BS);
+    }
+    if (typeof response.signCount === "number" && response.signCount !== clientAuthData.signCount) {
+      mismatches.push("signCount: server=" + response.signCount + " page=" + clientAuthData.signCount);
+    }
+    if (mismatches.length) {
+      row(tbody, "Cross-check", mismatches.join("; "), "bad",
+          "This page's decoder disagrees with the server. The server is authoritative — this is a bug in the page.");
+      log("err", "Decoder cross-check FAILED", mismatches.join("\n"));
+    } else {
+      row(tbody, "Cross-check", "server and page agree on aaguid, BE, BS and signCount", "ok");
+    }
+    any = true;
+  }
+
+  box.hidden = !any;
+}
+
+function analyseAssertion(credential) {
+  var authData = parseAuthenticatorData(new Uint8Array(credential.response.authenticatorData));
+  var clientData = JSON.parse(new TextDecoder().decode(credential.response.clientDataJSON));
+  log("note", "Decoded assertion authenticatorData (no attestation is ever present in an assertion)", authData);
+  log("note", "Decoded clientDataJSON", clientData);
+  return authData;
+}
+
+/* =====================================================================
+   12. Credential list and reset
+   ===================================================================== */
+function showList() {
+  var user = username();
+  if (!user) { setStatus("bad", "Enter a username first."); return; }
+  setStatus("busy", "Loading enrolled credentials…");
+  request("GET", "/list?username=" + encodeURIComponent(user)).then(function (items) {
+    var tbody = document.getElementById("credListTable");
+    tbody.textContent = "";
+    if (!items || !items.length) {
+      row(tbody, "(none)", "No credentials enrolled for \"" + user + "\".");
+    } else {
+      items.forEach(function (credential, index) {
+        var header = document.createElement("tr");
+        header.className = "section";
+        var th = document.createElement("th");
+        th.colSpan = 2;
+        th.textContent = "#" + (index + 1) + "  " + (credential.deviceName || "(unnamed)");
+        header.appendChild(th);
+        tbody.appendChild(header);
+        row(tbody, "attested", String(credential.attested), credential.attested ? "ok" : "bad");
+        row(tbody, "attestationFmt", String(credential.attestationFmt || "(none)"));
+        row(tbody, "deviceBound", String(credential.deviceBound), credential.deviceBound ? "ok" : "bad");
+        if (credential.platform) { row(tbody, "platform", String(credential.platform)); }
+        if (credential.securityLevel) { row(tbody, "securityLevel", String(credential.securityLevel)); }
+        row(tbody, "credentialId", String(credential.credentialId));
+        if (credential.createdAt) { row(tbody, "createdAt", String(credential.createdAt)); }
+        if (credential.lastUsedAt) { row(tbody, "lastUsedAt", String(credential.lastUsedAt)); }
+        if (credential.attestationNote) { row(tbody, "attestationNote", String(credential.attestationNote)); }
+      });
+    }
+    document.getElementById("credList").hidden = false;
+    setStatus("ok", "Listed " + ((items && items.length) || 0) + " credential(s) for \"" + user + "\".");
+  }).catch(function (error) {
+    setStatus("bad", "Could not list credentials: " + (error && error.message ? error.message : String(error)));
+  });
+}
+
+function resetUser() {
+  var user = username();
+  if (!user) { setStatus("bad", "Enter a username first."); return; }
+  setStatus("busy", "Resetting “" + user + "”…");
+  postJson("/reset", { username: user }).then(function (result) {
+    var removed = result && typeof result.removed === "number" ? result.removed : "?";
+    setStatus("ok", "Reset done — removed " + removed + " credential(s). You can register again.");
+    document.getElementById("credList").hidden = true;
+  }).catch(function (error) {
+    setStatus("bad", "Reset failed: " + (error && error.message ? error.message : String(error)));
+  });
+}
+
+/* =====================================================================
+   13. The ceremonies
+   ===================================================================== */
+function friendlyWebAuthnError(error) {
+  var name = error && error.name ? error.name : "Error";
+  var message = error && error.message ? error.message : String(error);
+  if (name === "SecurityError") {
+    return "SecurityError — almost always an rp.id / origin mismatch. This page is on \"" + location.hostname +
+           "\"; the rp.id the server issued must equal that hostname or be a registrable suffix of it. (" +
+           message + ")";
+  }
+  if (name === "NotAllowedError") {
+    return "NotAllowedError — the ceremony was cancelled or timed out. Either the system prompt was " +
+           "dismissed, or no authenticator matched the request (for a login: allowCredentials listed a " +
+           "credential this device does not hold — register first, or press Reset this user). (" + message + ")";
+  }
+  if (name === "InvalidStateError") {
+    return "InvalidStateError — this authenticator already holds a credential for this account and it is " +
+           "listed in excludeCredentials. Press \"Reset this user\", or log in instead of registering. (" +
+           message + ")";
+  }
+  if (name === "NotSupportedError") {
+    return "NotSupportedError — none of the requested algorithms or options are supported here. (" + message + ")";
+  }
+  if (name === "AbortError") { return "AbortError — the request was aborted. (" + message + ")"; }
+  return name + ": " + message;
+}
+
+function describeError(error) {
+  if (window.DOMException && error instanceof DOMException) { return friendlyWebAuthnError(error); }
+  return error && error.message ? error.message : String(error);
+}
+
+var busy = false;
+function setBusy(value) {
+  busy = value;
+  ["btnRegister", "btnLogin", "btnList", "btnReset", "btnStatus"].forEach(function (id) {
+    document.getElementById(id).disabled = value || (!CAN_RUN && (id === "btnRegister" || id === "btnLogin"));
+  });
+}
+
+function register() {
+  if (busy || !CAN_RUN) { return; }
+  var user = username();
+  if (!user) { setStatus("bad", "Enter a username first."); return; }
+
+  setBusy(true);
+  setStatus("busy", "Step 1/3 — asking the server for registration options…");
+  log("note", "── REGISTRATION ── user \"" + user + "\"");
+
+  var ceremonyId;
+  var clientAuthData = null;
+  postJson("/register/options", { username: user, deviceName: deviceName() })
+    .then(function (options) {
+      echoPolicy(options);
+      ceremonyId = options.ceremonyId;
+      var publicKey = options.publicKey;
+      if (!publicKey) { throw new Error("the server response has no publicKey member"); }
+
+      warnRpId(publicKey.rp && publicKey.rp.id ? publicKey.rp.id : "(missing)");
+      applyOverrides(publicKey, true);
+
+      var decoded = decodeCreationOptions(publicKey);
+      log("note", "Converted challenge, user.id and excludeCredentials[].id from base64url to ArrayBuffer", {
+        challengeBytes: new Uint8Array(decoded.challenge).length,
+        userIdBytes: new Uint8Array(decoded.user.id).length,
+        excludeCredentials: decoded.excludeCredentials.length,
+        attestationRequested: publicKey.attestation,
+        authenticatorSelection: publicKey.authenticatorSelection
+      });
+
+      setStatus("busy", "Step 2/3 — navigator.credentials.create(): confirm on your device…");
+      log("req", "navigator.credentials.create() — the system prompt appears now");
+      return navigator.credentials.create({ publicKey: decoded }).then(function (credential) {
+        return { credential: credential, requested: publicKey.attestation };
+      });
+    })
+    .then(function (result) {
+      var credential = result.credential;
+      if (!credential) { throw new Error("navigator.credentials.create() returned null"); }
+      log("res", "navigator.credentials.create() returned a PublicKeyCredential");
+
+      clientAuthData = analyseAttestation(credential, result.requested);
+
+      setStatus("busy", "Step 3/3 — sending the attestation to the server…");
+      return postJson("/register/verify", {
+        ceremonyId: ceremonyId,
+        username: user,
+        deviceName: deviceName(),
+        credential: serialiseAttestation(credential)
+      });
+    })
+    .then(function (response) {
+      echoPolicy(response);
+      renderServerVerdict(response, clientAuthData);
+      var attested = response && response.attested === true;
+      setStatus(attested ? "ok" : "bad",
+        attested
+          ? "Registered, and the server reports attested=true. Verify that claim — a browser cannot produce it."
+          : "Registered. The ceremony succeeded and the server stored the credential as attested=false.");
+      log("note", "Registration complete. The ceremony worked; the credential carries no attestation.", response);
+    })
+    .catch(function (error) {
+      var text = describeError(error);
+      log("err", "Registration failed", text);
+      setStatus("bad", "Registration failed: " + text);
+    })
+    .finally(function () { setBusy(false); });
+}
+
+function login() {
+  if (busy || !CAN_RUN) { return; }
+  var user = username();   // may be empty: the server then allows any discoverable credential
+
+  setBusy(true);
+  setStatus("busy", "Step 1/3 — asking the server for login options…");
+  log("note", "── LOGIN ── " + (user ? "user \"" + user + "\"" :
+              "no username — discoverable credential flow"));
+
+  var ceremonyId;
+  var clientAuthData = null;
+  postJson("/login/options", { username: user })
+    .then(function (options) {
+      echoPolicy(options);
+      ceremonyId = options.ceremonyId;
+      var publicKey = options.publicKey;
+      if (!publicKey) { throw new Error("the server response has no publicKey member"); }
+
+      warnRpId(publicKey.rpId || "(missing)");
+      applyOverrides(publicKey, false);
+
+      var decoded = decodeRequestOptions(publicKey);
+      log("note", "Converted challenge and allowCredentials[].id from base64url to ArrayBuffer", {
+        challengeBytes: new Uint8Array(decoded.challenge).length,
+        allowCredentials: decoded.allowCredentials.length,
+        userVerification: publicKey.userVerification
+      });
+      if (decoded.allowCredentials.length === 0) {
+        log("note", "allowCredentials is empty — the browser will offer whatever discoverable passkey it " +
+                    "holds for this relying party.");
+      }
+
+      setStatus("busy", "Step 2/3 — navigator.credentials.get(): confirm on your device…");
+      log("req", "navigator.credentials.get() — the system prompt appears now");
+      return navigator.credentials.get({ publicKey: decoded });
+    })
+    .then(function (credential) {
+      if (!credential) { throw new Error("navigator.credentials.get() returned null"); }
+      log("res", "navigator.credentials.get() returned a PublicKeyCredential");
+      clientAuthData = analyseAssertion(credential);
+
+      setStatus("busy", "Step 3/3 — sending the assertion to the server…");
+      return postJson("/login/verify", {
+        ceremonyId: ceremonyId,
+        username: user,
+        deviceName: deviceName(),
+        credential: serialiseAssertion(credential)
+      });
+    })
+    .then(function (response) {
+      echoPolicy(response);
+      renderServerVerdict(response, clientAuthData);
+      setStatus("ok", "Logged in. The signature verified against the server's challenge.");
+      log("note", "Login complete. This proves possession of the key and user verification — it says " +
+                  "nothing about where the key is stored. An assertion never carries attestation.", response);
+    })
+    .catch(function (error) {
+      var text = describeError(error);
+      log("err", "Login failed", text);
+      setStatus("bad", "Login failed: " + text);
+    })
+    .finally(function () { setBusy(false); });
+}
+
+document.getElementById("btnRegister").addEventListener("click", register);
+document.getElementById("btnLogin").addEventListener("click", login);
+document.getElementById("btnList").addEventListener("click", showList);
+document.getElementById("btnReset").addEventListener("click", resetUser);
+document.getElementById("btnStatus").addEventListener("click", function () {
+  loadStatus().then(function () { setStatus("", "Server status reloaded."); });
+});
+
+// Pull the server's own statement once at load. Failure is non-fatal.
+loadStatus();
+</script>
+</body>
+</html>

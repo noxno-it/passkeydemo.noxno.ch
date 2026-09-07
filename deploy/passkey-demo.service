@@ -1,0 +1,135 @@
+# /etc/systemd/system/passkey-demo.service
+#
+# Non-Docker alternative to docker-compose.yml. Runs the passkey demo relying party
+# straight on the host, behind the same nginx reverse proxy.
+#
+#   sudo useradd --system --home-dir /opt/passkey-demo --shell /usr/sbin/nologin passkey
+#   sudo cp -r build/install/passkey-reference-server/lib /opt/passkey-demo/lib
+#   sudo cp application.properties users.json /opt/passkey-demo/
+#   sudo cp deploy/passkey-demo.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now passkey-demo
+#
+# Full runbook, including the values in application.properties that MUST change before
+# this is reachable from the internet: DEPLOY.md.
+
+[Unit]
+Description=Passkey demo relying party (WebAuthn demo relying party)
+Documentation=file:/opt/passkey-demo/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+# A bad application.properties makes the JVM exit immediately; without a start limit
+# systemd would spin. After the burst the unit stays failed - `systemctl reset-failed
+# passkey-demo` once the config is fixed.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=exec
+User=passkey
+Group=passkey
+WorkingDirectory=/opt/passkey-demo
+
+# Optional: JAVA_OPTS, TZ, LANG. NOT the server's own settings - Config.java reads
+# java.util.Properties from one file and knows nothing about the environment, so every
+# tunable (rpId, adminToken, attestationPolicy, ...) lives in application.properties.
+# The leading "-" makes the file optional.
+EnvironmentFile=-/etc/passkey-demo/passkey-demo.env
+
+Environment=LANG=C.UTF-8
+Environment=TZ=Europe/Berlin
+
+# Small-VPS JVM. MaxRAMPercentage is read against MemoryMax below, not against host RAM.
+# slf4j-simple defaults to bare stderr with no timestamps; these four flags give journald
+# timestamped lines on stdout.
+Environment="JAVA_OPTS=-XX:MaxRAMPercentage=75.0 \
+ -XX:+UseSerialGC \
+ -XX:+ExitOnOutOfMemoryError \
+ -XX:+HeapDumpOnOutOfMemoryError \
+ -XX:HeapDumpPath=/tmp \
+ -Dfile.encoding=UTF-8 \
+ -Dstdout.encoding=UTF-8 \
+ -Dorg.slf4j.simpleLogger.logFile=System.out \
+ -Dorg.slf4j.simpleLogger.showDateTime=true \
+ -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+
+# NOT `java -jar`: build.gradle.kts applies the `application` plugin, which produces a
+# thin jar with an empty manifest - no Main-Class, no Class-Path. The runnable artefact is
+# build/install/passkey-reference-server/lib/, so the classpath is the whole directory.
+# The trailing "*" is the JVM's own classpath wildcard, expanded by java, not by a shell
+# (systemd does not glob) - which is exactly why it has to be spelled "lib/*" and not
+# "lib/*.jar". The argument after the main class is the properties file.
+# /usr/bin/java is the update-alternatives symlink: it exists on amd64 and arm64 alike and
+# does not hard-code a JDK vendor. Verify it really is 21 before enabling the unit -
+# a Java 17 alternative fails at startup with UnsupportedClassVersionError:
+#   java -version        # must print 21.x
+#   readlink -f "$(command -v java)"
+ExecStart=/usr/bin/java $JAVA_OPTS -cp /opt/passkey-demo/lib/* ch.noxno.passkeydemo.Main /opt/passkey-demo/application.properties
+# Pin the JDK explicitly instead, if several are installed (arch suffix is amd64 or arm64):
+# ExecStart=/usr/lib/jvm/java-21-openjdk-amd64/bin/java $JAVA_OPTS -cp /opt/passkey-demo/lib/* ch.noxno.passkeydemo.Main /opt/passkey-demo/application.properties
+# ExecStart=/usr/lib/jvm/temurin-21-jdk-amd64/bin/java $JAVA_OPTS -cp /opt/passkey-demo/lib/* ch.noxno.passkeydemo.Main /opt/passkey-demo/application.properties
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+# /var/lib/passkey-demo, created 0750 passkey:passkey and writable despite
+# ProtectSystem=strict. Point cacheDir and vectorsDir there in application.properties:
+#   cacheDir=/var/lib/passkey-demo/cache
+#   vectorsDir=/var/lib/passkey-demo/vectors
+StateDirectory=passkey-demo
+StateDirectoryMode=0750
+
+# ---------------------------------------------------------------- hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+# ProcSubset=pid is deliberately NOT set: it hides /proc/meminfo, which the JVM reads to
+# size the heap. With it, -XX:MaxRAMPercentage misbehaves.
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+KeyringMode=private
+UMask=0077
+
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Port 8099 is above 1024, so no CAP_NET_BIND_SERVICE is needed. If you ever move the
+# listener to :443 directly, do not add the capability - keep nginx in front.
+
+# AF_NETLINK is required: the JVM enumerates network interfaces through it at startup.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+# If the JVM dies at startup with SIGSYS ("bad system call"), comment out the three
+# SystemCallFilter/SystemCallErrorNumber lines above and file it as a finding.
+
+# MemoryDenyWriteExecute is deliberately ABSENT. The HotSpot JIT maps its code cache
+# writable and then executable; with W^X denied the JVM will not start. Do not add it.
+
+LimitNOFILE=65535
+MemoryMax=768M
+TasksMax=256
+
+# Everything the process prints goes to the journal.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=passkey-demo
+
+[Install]
+WantedBy=multi-user.target

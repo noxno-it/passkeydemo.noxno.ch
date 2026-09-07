@@ -1,0 +1,49 @@
+# Build context = the repository root. Keep it small and reproducible:
+# the image must be built from sources, never from whatever happens to sit in build/.
+#
+# MUST stay in the context (do not add them here):
+#   settings.gradle.kts, build.gradle.kts, src/, application.properties, users.json,
+#   public/ (optional staticDir for the browser demo page)
+
+# Gradle output and caches - the builder stage compiles from scratch
+build/
+.gradle/
+gradle-app.setting
+.kotlin/
+
+# The Gradle wrapper is not used inside the image (the builder image pins Gradle 9.3.1),
+# but leave gradle/ and gradlew in the context: they are tiny and keep a local
+# `./gradlew installDist` next to `docker build` honest.
+
+# Runtime state - must never be baked in. Google attestation roots are re-fetched on
+# first start, recorded vectors belong to a developer machine, not to a server image.
+cache/
+vectors/
+
+# Deployment kit and docs - not needed to compile or run
+DEPLOY.md
+PLATFORM-SETUP.md
+README.md
+deploy/
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+.env
+.env.*
+
+# VCS and editors
+.git/
+.gitignore
+.svn/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local secrets or overrides an operator may have dropped next to the sources
+*.local.properties
+*.pem
+*.key
+*.p12
+*.jks

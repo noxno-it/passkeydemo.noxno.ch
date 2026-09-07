@@ -1,0 +1,138 @@
+# Passkey demo relying party - compose stack for https://passkeydemo.noxno.ch
+#
+#   printf 'PASSKEY_ADMIN_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Every PASSKEY_* value below is an EXAMPLE. Real app identity - package name, bundle ids,
+# team id, signing digests - belongs in .env, never in this file.
+#
+# TLS is NOT terminated here. The container listens on 127.0.0.1:8099 and nginx
+# (deploy/nginx-passkey-demo.conf) is the only thing the internet talks to.
+#
+# Read the SECURITY section of DEPLOY.md first. This is a reference server: state is
+# in memory, passwords are compared in clear text, and it must never see sensitive personal data.
+
+name: passkey-demo
+
+services:
+  passkey:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: passkey-demo:local
+    container_name: passkey-demo
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+
+    # Loopback only. Publishing 0.0.0.0:8099 would put a plain-HTTP relying party on
+    # the internet and bypass nginx, TLS, HSTS and the per-IP limit_req.
+    ports:
+      - "127.0.0.1:8099:8099"
+
+    environment:
+      TZ: Europe/Berlin
+
+      # ---------------------------------------------------------- relying party
+      # rpId is hashed into authenticatorData.rpIdHash. Changing it invalidates every
+      # passkey already enrolled against the old value.
+      PASSKEY_RP_ID: ${PASSKEY_RP_ID:-passkeydemo.noxno.ch}
+      PASSKEY_RP_NAME: ${PASSKEY_RP_NAME:-Noxno Passkey Demo}
+      # Complete list of accepted clientDataJSON.origin values. The browser sends
+      # https://<rpId>; the Android app writes android:apk-key-hash:<...> itself.
+      PASSKEY_ACCEPTED_ORIGINS: ${PASSKEY_ACCEPTED_ORIGINS:-https://passkeydemo.noxno.ch}
+
+      # Context path the API is mounted under: <basePath>/rest/authentication/passkey/...
+      # Set it to the context path of the backend this server stands in for.
+      PASSKEY_BASE_PATH: ${PASSKEY_BASE_PATH:-/api}
+
+      # ---------------------------------------------------------- attestation policy
+      # strict = only android-key and packed + Apple App Attest (the compliance path).
+      # demo   = ALSO accept fmt=none so a browser passkey can complete the ceremony.
+      #          Those credentials are unattested: BSI trust level "normal", not
+      #          "substantiell". A browser can never produce attestation - only a
+      #          native app can. Flip this per demo, never permanently.
+      PASSKEY_ATTESTATION_POLICY: ${PASSKEY_ATTESTATION_POLICY:-strict}
+
+      # ---------------------------------------------------------- app identity
+      # EXAMPLE - <PACKAGE_NAME> of the real Android app belongs in .env.
+      PASSKEY_ANDROID_PACKAGE_NAME: ${PASSKEY_ANDROID_PACKAGE_NAME:-com.example.passkeydemo}
+      # Comma-separated lower-case hex SHA-256 of every accepted Android signing
+      # certificate. EMPTY MEANS "log, do not enforce" - fill this in before the demo.
+      #   keytool -list -v -keystore <release.jks> -alias <alias> | grep 'SHA256:'
+      PASSKEY_ANDROID_SIGNING_DIGESTS: ${PASSKEY_ANDROID_SIGNING_DIGESTS:-}
+      # EXAMPLE - <TEAM_ID>.<BUNDLE_ID>, comma separated when a release build uses a second id.
+      PASSKEY_IOS_APP_IDS: ${PASSKEY_IOS_APP_IDS:-ABCDE12345.com.example.passkeydemo}
+
+      # Domain association published at /.well-known/ (platform-passkey path only).
+      PASSKEY_SERVE_WELL_KNOWN: ${PASSKEY_SERVE_WELL_KNOWN:-true}
+      # EXAMPLE - <TEAM_ID> from Apple Developer -> Membership details.
+      PASSKEY_APPLE_TEAM_ID: ${PASSKEY_APPLE_TEAM_ID:-ABCDE12345}
+      # PUBLIC GRANT. Empty publishes an empty list and WARNs. Set it to the Play App Signing
+      # SHA-256 (Play Console -> Setup -> App signing), never to a debug certificate.
+      PASSKEY_ANDROID_WEB_CREDENTIAL_DIGESTS: ${PASSKEY_ANDROID_WEB_CREDENTIAL_DIGESTS:-}
+      # appattest = App Store / TestFlight, appattestdevelop = Xcode builds.
+      # Drop appattestdevelop once the demo runs on a TestFlight build.
+      PASSKEY_APP_ATTEST_ENVIRONMENTS: ${PASSKEY_APP_ATTEST_ENVIRONMENTS:-appattest,appattestdevelop}
+
+      # ---------------------------------------------------------- hardening
+      # false = reject the AOSP software attestation root, i.e. reject emulators.
+      PASSKEY_ALLOW_SOFTWARE_ATTESTATION_ROOT: ${PASSKEY_ALLOW_SOFTWARE_ATTESTATION_ROOT:-false}
+      # enforce = reject an unlocked bootloader / non-Verified boot state.
+      PASSKEY_VERIFIED_BOOT_POLICY: ${PASSKEY_VERIFIED_BOOT_POLICY:-enforce}
+
+      # The app's own limiter keys on the TCP peer address, which behind nginx is always
+      # 127.0.0.1 - so this is effectively a GLOBAL budget, not a per-client one. Keep it
+      # generous and let nginx limit_req do the per-IP work. See DEPLOY.md.
+      PASSKEY_RATE_LIMIT_PER_MINUTE: ${PASSKEY_RATE_LIMIT_PER_MINUTE:-600}
+
+      PASSKEY_UNLOCK_WINDOW_SECONDS: ${PASSKEY_UNLOCK_WINDOW_SECONDS:-604800}
+      PASSKEY_CEREMONY_TTL_SECONDS: ${PASSKEY_CEREMONY_TTL_SECONDS:-300}
+
+      # X-Admin-Token of POST passkey/admin/reset (hotline recovery). REQUIRED: the
+      # container refuses to start on the shipped default "change-me". Put it in .env:
+      #   PASSKEY_ADMIN_TOKEN=$(openssl rand -hex 32)
+      # Set it to the empty string to disable the reset endpoint entirely.
+      PASSKEY_ADMIN_TOKEN: ${PASSKEY_ADMIN_TOKEN:?set PASSKEY_ADMIN_TOKEN in .env - `openssl rand -hex 32`, or the empty string to disable passkey/admin/reset}
+
+    volumes:
+      # Persists the Google attestation root/revocation cache and the recorded test
+      # vectors across `docker compose down`. Empty named volume -> Docker seeds it from
+      # the image, uid 10001 ownership included.
+      - passkey-data:/app/data
+      # Optional: serve a demo page from the host instead of the one baked into the image
+      # (only reachable with PASSKEY_ATTESTATION_POLICY=demo, at https://<rpId>/demo/).
+      # - ./public:/app/public:ro
+
+    # Matches the systemd hardening in deploy/passkey-demo.service.
+    read_only: true
+    tmpfs:
+      # The entrypoint renders /tmp/runtime.properties here, and the JVM wants a writable
+      # temp dir. noexec would break nothing today but breaks JNI extraction if a future
+      # dependency needs it - hence exec is deliberately NOT excluded.
+      - /tmp:rw,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # Small VPS: keep one runaway request from taking the box down with it.
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    # JVM heap follows this via -XX:MaxRAMPercentage=75.0 (see JAVA_OPTS in the Dockerfile).
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # HEALTHCHECK is inherited from the image (GET .../retrieveChallenge every 30s).
+    # `docker compose ps` shows healthy/unhealthy.
+
+volumes:
+  passkey-data:
+    name: passkey-demo-data

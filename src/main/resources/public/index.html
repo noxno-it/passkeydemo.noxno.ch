@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Passkey-Demo – Platzhalter</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 2rem 1.25rem; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .sub { opacity: .7; margin: 0 0 1.5rem; }
+  .warn { border-left: 4px solid #b8860b; background: rgba(184,134,11,.09); padding: .9rem 1rem; border-radius: 0 6px 6px 0; }
+  .warn strong { display: block; margin-bottom: .35rem; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+  pre { background: rgba(127,127,127,.12); padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  ul { padding-left: 1.2rem; }
+  footer { margin-top: 2rem; opacity: .65; font-size: .85em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Passkey-Demo</h1>
+  <p class="sub">Platzhalterseite des Referenzservers – <code>src/main/resources/public/index.html</code></p>
+
+  <p class="warn">
+    <strong>Was eine Browser-Demo zeigen kann und was nicht</strong>
+    Im Browser läuft eine echte WebAuthn-Zeremonie: Challenge, Nutzerverifikation, Signatur, Prüfung
+    auf dem Server. Eine <em>Attestierung</em> zeigt sie nicht. Plattform-Passkeys (iCloud Keychain,
+    Google Password Manager) liefern immer <code>fmt=none</code>. Nur eine native App liefert
+    <code>android-key</code> bzw. <code>packed</code> plus Apple-App-Attest-Objekt. Alles, was hier
+    registriert wird, trägt deshalb <code>attested=false</code>.
+  </p>
+
+  <h2>Diese Seite ersetzen</h2>
+  <p>
+    Der Server serviert <code>/demo</code> aus dem Verzeichnis <code>staticDir</code>
+    (Standard: <code>./public</code> neben <code>application.properties</code>). Existiert es, hat es
+    Vorrang vor dieser eingebauten Seite. Beides nur bei <code>attestationPolicy=demo</code>.
+  </p>
+
+  <h2>Demo-API (nur bei attestationPolicy=demo, sonst 404)</h2>
+  <ul>
+    <li><code>GET  /demo/api/status</code></li>
+    <li><code>POST /demo/api/register/options</code> – <code>{"username":"…"}</code></li>
+    <li><code>POST /demo/api/register/verify</code> – <code>{"ceremonyId":"…","credential":{…}}</code></li>
+    <li><code>POST /demo/api/login/options</code> – <code>{"username":"…"}</code> (optional)</li>
+    <li><code>POST /demo/api/login/verify</code> – <code>{"ceremonyId":"…","credential":{…}}</code></li>
+    <li><code>GET  /demo/api/list?username=…</code></li>
+    <li><code>POST /demo/api/reset</code> – <code>{"username":"…"}</code></li>
+  </ul>
+  <pre id="status">lade /demo/api/status …</pre>
+
+  <footer>
+    Die Compliance-Endpunkte der App liegen unverändert unter
+    <code>&lt;basePath&gt;/rest/authentication/passkey/…</code> (<code>basePath</code>, Standard
+    <code>/api</code>) und verlangen Bearer-Token, Passwort und – je nach Plattform – App-Attest.
+  </footer>
+</main>
+<script>
+  fetch('/demo/api/status')
+    .then(r => r.json())
+    .then(j => { document.getElementById('status').textContent = JSON.stringify(j, null, 2); })
+    .catch(e => { document.getElementById('status').textContent = 'GET /demo/api/status: ' + e; });
+</script>
+</body>
+</html>

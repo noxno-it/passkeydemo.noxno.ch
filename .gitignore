@@ -1,0 +1,13 @@
+build/
+.gradle/
+cache/
+out/
+users.json
+!users.json.example
+.env
+*.log
+
+# Recorded ceremony vectors capture a real device verbatim: application id, signing
+# certificate SHA-256, TEAMID.bundleId and the full attestation chain. They belong to a
+# developer machine, never to a public repo (.dockerignore already excludes them).
+vectors/
