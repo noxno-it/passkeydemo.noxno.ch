@@ -51,8 +51,22 @@ public final class WellKnownController {
     public static final String AASA_PATH = "/.well-known/apple-app-site-association";
     public static final String ASSETLINKS_PATH = "/.well-known/assetlinks.json";
 
-    /** The one Digital Asset Links relation that grants an app the domain's platform passkeys. */
+    /** The Digital Asset Links relation that grants an app the domain's platform passkeys. */
     public static final String LOGIN_CREDS_RELATION = "delegate_permission/common.get_login_creds";
+
+    /**
+     * Also required, and the reason this is not a one-relation document.
+     *
+     * <p>Google's own guidance: "until we complete migrating our logic to accept it, please include
+     * both delegate_permission/common.handle_all_urls and delegate_permission/common.get_login_creds".
+     * Play Services' app-facing passkey path still matches on handle_all_urls, so a statement listing
+     * only get_login_creds is rejected for EVERY rpId with the maddeningly misleading
+     * "RP ID cannot be validated" - even though
+     * assetlinks:check?relation=delegate_permission/common.get_login_creds answers {"linked": true}.
+     * A browser never hits this, because a privileged browser authenticates by origin and skips
+     * Digital Asset Links entirely; only the native app path fails. Verified the hard way.
+     */
+    public static final String HANDLE_ALL_URLS_RELATION = "delegate_permission/common.handle_all_urls";
 
     /** Both documents are JSON; apple-app-site-association has no extension to infer it from. */
     public static final String CONTENT_TYPE = "application/json";
@@ -84,7 +98,7 @@ public final class WellKnownController {
 
     /** One entry of the assetlinks.json ARRAY. Field names are the contract - do not rename. */
     public static final class AssetLink {
-        public final List<String> relation = List.of(LOGIN_CREDS_RELATION);
+        public final List<String> relation = List.of(HANDLE_ALL_URLS_RELATION, LOGIN_CREDS_RELATION);
         public final AssetLinkTarget target;
 
         AssetLink(String packageName, List<String> fingerprints) {

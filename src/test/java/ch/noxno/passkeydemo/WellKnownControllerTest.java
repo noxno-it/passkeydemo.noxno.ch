@@ -131,8 +131,15 @@ class WellKnownControllerTest {
         assertTrue(body.isArray(), "assetlinks.json is a JSON array, not an object");
         assertEquals(1, body.size());
         JsonNode entry = body.get(0);
-        assertEquals(1, entry.get("relation").size());
-        assertEquals("delegate_permission/common.get_login_creds", entry.get("relation").get(0).asString());
+        // BOTH relations, and this is load-bearing rather than belt-and-braces. Play Services'
+        // app-facing passkey path still matches on handle_all_urls, so a statement carrying only
+        // get_login_creds is rejected for EVERY rpId with "RP ID cannot be validated" - while
+        // assetlinks:check?relation=get_login_creds cheerfully answers {"linked": true}. A browser
+        // never notices, because a privileged browser authenticates by origin and skips Digital
+        // Asset Links entirely; only the native app path breaks.
+        assertEquals(2, entry.get("relation").size());
+        assertEquals("delegate_permission/common.handle_all_urls", entry.get("relation").get(0).asString());
+        assertEquals("delegate_permission/common.get_login_creds", entry.get("relation").get(1).asString());
         JsonNode target = entry.get("target");
         assertEquals("android_app", target.get("namespace").asString());
         assertEquals("com.example.passkeydemo", target.get("package_name").asString());
